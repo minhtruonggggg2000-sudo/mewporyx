@@ -1,0 +1,57 @@
+
+name: Build Mew Proxy IPA
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Find Xcode project
+        id: project
+        run: |
+          PROJECT=$(find . -name '*.xcodeproj' -type d -print -quit)
+          if [ -z "$PROJECT" ]; then
+            echo "Không tìm thấy Xcode project"
+            exit 1
+          fi
+          echo "project=$PROJECT" >> "$GITHUB_OUTPUT"
+
+      - name: Build Mew Proxy
+        run: |
+          set -o pipefail
+          xcodebuild archive \
+            -project "${{ steps.project.outputs.project }}" \
+            -scheme OGIOS \
+            -configuration Release \
+            -sdk iphoneos \
+            -archivePath "$RUNNER_TEMP/MewProxy.xcarchive" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            PRODUCT_BUNDLE_IDENTIFIER=com.mewproxy.app
+
+      - name: Package IPA
+        run: |
+          mkdir -p "$RUNNER_TEMP/Payload"
+          APP=$(find "$RUNNER_TEMP/MewProxy.xcarchive/Products/Applications" -name '*.app' -type d -print -quit)
+          test -n "$APP"
+          cp -R "$APP" "$RUNNER_TEMP/Payload/"
+          cd "$RUNNER_TEMP"
+          zip -qr MewProxy.ipa Payload
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: Mew-Proxy-IPA
+          path: ${{ runner.temp }}/MewProxy.ipa
+          retention-days: 7
